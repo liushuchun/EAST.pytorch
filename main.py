@@ -1,17 +1,23 @@
+#coding=utf-8
 import os
-
+from loss import *
 from config import opt
 import models
-import torch  as t
+import torch
 import torch.optim as optim
-from data.dataset import ImageDataSet
+from data.dataset import ImageDataSet,collate_fn
 from torch.utils.data import DataLoader
 from torch import nn
 from torch.autograd import Variable
-from utils.visualize import Visualizer
-from utils.log import  Logger
-from tqdm import tqdm
+#from utils.visualize import Visualizer
+#from tqdm import tqdm
+from torch.optim import lr_scheduler
+import data.dataset
+import torch.utils.data as data
+import time 
+import cv2
 
+gpus = list(range(len(opt.gpu_list.split(','))))
 
 def write_csv(results,file_name):
     '''write the result to file'''
@@ -23,126 +29,82 @@ def write_csv(results,file_name):
 
 
 
-def train(**kwargs):
+def train(epochs, model, trainloader, crit, optimizer,
+         scheduler, save_step, weight_decay):
+    #add(xyf)
+    for e in range(opt.epoch_num):
+        print('*' * 10)
+        print('Epoch {} / {}'.format(e + 1, epochs))
+        model.train()
+        start = time.time()
+        loss = 0.0
+        total = 0.0
+        for i, (img, score_map, geo_map, training_mask) in enumerate(trainloader):
+            scheduler.step()
+            optimizer.zero_grad()
+
+            img = Variable(img.cuda())
+            score_map = Variable(score_map.cuda())
+            geo_map = Variable(geo_map.cuda())
+            training_mask = Variable(training_mask.cuda())
+            f_score, f_geometry = model(img)
+            loss1 = crit(score_map, f_score, geo_map, f_geometry, training_mask)
+
+            loss += loss1.data[0]
+
+            loss1.backward()
+            optimizer.step()
+
+        during = time.time() - start
+        print("Loss : {:.6f}, Time:{:.2f} s ".format(loss / len(trainloader), during))
+        print()
+        #writer.add_scalar('loss', loss / len(trainloader), e)
+
+        if (e + 1) % save_step == 0:
+            if not os.path.exists('./checkpoints'):
+                os.mkdir('./checkpoints')
+            torch.save(model.state_dict(), './checkpoints/model_{}.pth'.format(e + 1))
+
+def main(**kwargs):
     opt.parse(kwargs)
 
-    if not os.path.isdir(opt.log_path):
-        os.mkdir(opt.log_path)
-    if not os.path.isdir(opt.save_path):
-        os.mkdir(opt.save_path)
+    #if not os.path.isdir(opt.log_path):
+        #os.mkdir(opt.log_path)
+    #if not os.path.isdir(opt.save_path):
+        #os.mkdir(opt.save_path)
 
     # step0:set log
-    logger=Logger(opt.log_path)
+    #logger = Logger(opt.log_path)
 
     # step1:configure model
-    model=getattr(models,opt.model)()
+    model = getattr(models, opt.model)()
 
     if os.path.exists(opt.load_model_path):
         model.load(opt.load_model_path)
 
-    if opt.use_gpu:model.cuda()
+    if opt.use_gpu: model.cuda()
 
-    # step2:data
-    train_data=ImageDataSet(opt.train_data_root,train=True)
-    val_data=ImageDataSet(opt.train_data_root,train=False)
-    train_dataloader=DataLoader(train_data,opt.batch_size,shuffle=True,num_workers=opt.num_workers)
+    root_path = 'icdar2017/'
+    train_img = root_path + 'images'
+    train_txt = root_path + 'labels'
+    #print(train_img)
+    #print(train_txt)
+    trainset = ImageDataSet(train_img, train_txt)
+    trainloader = DataLoader(
+        trainset, batch_size=opt.batch_size, shuffle=True, collate_fn=collate_fn, num_workers=opt.num_workers)
 
-    val_dataloader=DataLoader(val_data,opt.batch_size,shuffle=False,num_workers=opt.num_workers)
+    crit = LossFunc()
+    weight_decay = 0
+    optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
+    #weight_decay=1)
+    scheduler = lr_scheduler.StepLR(optimizer, step_size=10000,
+                                    gamma=0.94)
 
+    train(epochs=1500, model=model, trainloader=trainloader,
+          crit=crit, optimizer=optimizer, scheduler=scheduler,
+          save_step=100, weight_decay=weight_decay)
 
-    # step3:criterion and optimizer
-    criterion=nn.CrossEntropyLoss()
-    lr=opt.lr
-    if opt.optmizer=="RMSprop":
-        optimizer=optim.RMSprop(model.parameters(),lr=lr)
-    elif opt.optmizer=="Adam":
-        optimizer=optim.Adam(model.parameters(),lr=lr,betas=opt.betas)
-    elif opt.optmizer=="SGD":
-        optimizer=optim.SGD(model.parameters(),lr=lr)
-    else:
-        optimizer=optim.Adadelta(model.parameters(),lr=lr)
-
-
-    for epoch in range(opt.epoch_num):
-        for ii,(data,label) in tqdm(enumerate(train_dataloader),total=len(train_data)):
-            # train model
-            input=Variable(data)
-            target=Variable(label)
-
-            if opt.use_gpu:
-                input=input.cuda()
-                target=target.cuda()
-
-            optimizer.zero_grad()
-            score=model(input)
-            loss=criterion(score,target)
-
-            logger.scalar_summary('train_loss', loss.data[0], ii + epoch * len(train_dataloader))
-
-            accuracy=0
-            logger.scalar_summary('train_accuray', accuracy, i + epoch * len(train_dataloader))
-
-            loss.backward()
-            optimizer.step()
-
-
-
-
-
-        model.save()
-
-
-
-def val(model,dataloader):
-    '''
-    计算模型在验证集上的准确率等信息
-    :param model: 
-    :param dataloader: 
-    :return: 
-    '''
-    model.eval()
-
-    for ii,data in enumerate(dataloader):
-        input,label=data
-        val_input=Variable(input,volatile=True)
-        val_label=Variable(label.type(t.LongTensor),volatile=True)
-        if opt.use_gpu:
-            val_input.cuda()
-            val_label.cuda()
-
-        score=model(val_input)
-
-
-    model.train()
-
-
-
-
-def help():
-    '''
-    打印帮助信息:python main.py help
-    
-    '''
-    print('''
-    useage:python main.py <function> [--args=value]
-    <function>:=train | test | help
-    example:
-        python {0} train --env='env0701' --lr=0.01
-        python {0} test --dataset='pyath/to/dataset/root/'
-        python {0} help
-    available args:
-    '''.format(__file__))
-
-    from inspect import getsource
-    source = (getsource(opt.__class__))
-    print(source)
-
-
-
-
-
-
+    #write.close()
 
 if __name__=="__main__":
-    import fire
-    fire.Fire()
+    main()
