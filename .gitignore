@@ -1,0 +1,6 @@
+.idea/workspace.xml
+.gitignore
+.idea/vcs.xml
+checkpoints/
+*.DS_Store
+*.pyc

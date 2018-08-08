@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.init as init
 import torch.nn.functional as F
-
+import math
 from models import vgg16
 
 
@@ -68,22 +68,22 @@ class East(nn.Module):
         self.relu7 = nn.ReLU(inplace=True)
         self.drop7 = nn.Dropout2d()
 
-        layer4 = nn.Sequential(nn.Conv2d(32, 32, 3, padding=1), nn.BatchNorm2d(32), nn.ReLU(inplace=True))
+        layer4 = nn.Sequential(nn.Conv2d(32, 32, 3, padding=1), nn.BatchNorm2d(32), nn.ReLU())
 
-        layer3 = nn.Sequential(nn.Conv2d(128, 32, 1), nn.BatchNorm2d(32), nn.ReLU(inplace=True),
-                               nn.Conv2d(32, 32, 3, padding=1), nn.BatchNorm2d(32), nn.ReLU(inplace=True))
+        layer3 = nn.Sequential(nn.Conv2d(128, 32, 1), nn.BatchNorm2d(32), nn.ReLU(),
+                               nn.Conv2d(32, 32, 3, padding=1), nn.BatchNorm2d(32), nn.ReLU())
 
-        layer2 = nn.Sequential(nn.Conv2d(256, 64, 1), nn.BatchNorm2d(64), nn.ReLU(inplace=True),
-                               nn.Conv2d(64, 64, 3, padding=1), nn.BatchNorm2d(64), nn.ReLU(inplace=True))
+        layer2 = nn.Sequential(nn.Conv2d(256, 64, 1), nn.BatchNorm2d(64), nn.ReLU(),
+                               nn.Conv2d(64, 64, 3, padding=1), nn.BatchNorm2d(64), nn.ReLU())
 
-        layer1 = nn.Sequential(nn.Conv2d(512, 128, 1), nn.BatchNorm2d(128), nn.ReLU(inplace=True),
-                               nn.Conv2d(128, 128, 3, padding=1), nn.BatchNorm2d(128), nn.ReLU(inplace=True))
+        layer1 = nn.Sequential(nn.Conv2d(512, 128, 1), nn.BatchNorm2d(128), nn.ReLU(),
+                               nn.Conv2d(128, 128, 3, padding=1), nn.BatchNorm2d(128), nn.ReLU())
 
         self.feature_convs = nn.ModuleList([layer1, layer2, layer3, layer4])
 
-        self.inside_score_net = nn.Conv2d(32, 1, 1)
-        self.side_v_code_net = nn.Conv2d(32, 2, 1, padding=1)
-        self.side_v_coord = nn.Conv2d(32, 4, 1, padding=1)
+        self.inside_score_net=nn.Sequential(nn.Conv2d(32, 1, 1),nn.Sigmoid())
+        self.side_v_geo = nn.Sequential(nn.Conv2d(32, 4, 1, padding=1),nn.Sigmoid())
+        self.side_v_angle = nn.Sequential(nn.Conv2d(32, 1, 1, padding=1),nn.Sigmoid())
 
     def _init_weights(self):
         for m in self.modules():
@@ -174,12 +174,22 @@ class East(nn.Module):
                 h[i] = self.feature_convs[i - 1](concat)
 
             if i <= 2:
-                g[i] = F.upsample(h[i], scale_factor=(2, 2), mode='nearest')
+                g[i] = F.upsample(h[i], scale_factor=2, mode='bilinear')
             else:
 
                 g[i] = self.feature_convs[i](h[i])
 
-        return torch.cat([self.inside_score_net(g[3]), self.side_v_code_net(g[3]), self.side_v_code_net(g[3])], dim=1)
+        F_score=self.inside_score_net(g[3])
+
+        geo_map=self.side_v_geo(g[3])*512
+
+        angle_map=self.side_v_angle(g[3])
+
+        angle_map=(angle_map-0.5)*math.pi/2
+
+        F_geometry=torch.cat((geo_map,angle_map),dim=1)
+
+        return F_score,F_geometry
 
 
 if __name__=="__main__":
