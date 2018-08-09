@@ -67,14 +67,14 @@ def parse(self,kwargs):
     :param kwargs: 
     :return: 
     '''
-    for k,v in kwargs.iteritems():
+    for k,v in kwargs.items():
         if not hasattr(self,k):
             warnings.warn("Warning:opt has not attribute ^s" %k)
 
         setattr(self,k,v)
 
     print('use config:')
-    for k,v in self.__class__.__dict__.iteritems():
+    for k,v in self.__class__.__dict__.items():
         if not k.startswith('__'):
             print(k,getattr(self,k))
 

@@ -6,7 +6,7 @@ import math
 from models import vgg
 
 
-class East(nn.Module):
+class EAST(nn.Module):
     """East is the east network
     
     """
