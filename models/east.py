@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.init as init
 import torch.nn.functional as F
 import math
-from models import vgg16
+from models import vgg
 
 
 class East(nn.Module):
@@ -16,7 +16,7 @@ class East(nn.Module):
 
         # conv1
 
-        self.conv1_1 = nn.Conv2d(3, 64, 3, padding=100)
+        self.conv1_1 = nn.Conv2d(3, 64, 3, padding=1)
         self.relu1_1 = nn.ReLU(inplace=True)
         self.conv1_2 = nn.Conv2d(64, 64, 3, padding=1)
         self.relu1_2 = nn.ReLU(inplace=True)
@@ -35,13 +35,13 @@ class East(nn.Module):
         self.relu3_1 = nn.ReLU(inplace=True)
         self.conv3_2 = nn.Conv2d(256, 256, 3, padding=1)
         self.relu3_2 = nn.ReLU(inplace=True)
-        self.conv3_3 = nn.Conv2d(255, 256, 3, padding=1)
+        self.conv3_3 = nn.Conv2d(256, 256, 3, padding=1)
         self.relu3_3 = nn.ReLU(inplace=True)
         self.pool3 = nn.MaxPool2d(2, stride=2, ceil_mode=True)  # 1/8
 
         # conv4
 
-        self.conv4_1 = nn.Conv2d(256, 256, 3, padding=1)
+        self.conv4_1 = nn.Conv2d(256, 512, 3, padding=1)
         self.relu4_1 = nn.ReLU(inplace=True)
         self.conv4_2 = nn.Conv2d(512, 512, 3, padding=1)
         self.relu4_2 = nn.Conv2d(512, 512, 3, padding=1)
@@ -58,32 +58,40 @@ class East(nn.Module):
         self.relu5_3 = nn.ReLU(inplace=True)
         self.pool5 = nn.MaxPool2d(2, stride=2, ceil_mode=True)
 
-        # fc6
-        self.fc6 = nn.Conv2d(512, 4096, 7)
-        self.relu6 = nn.ReLU(inplace=True)
-        self.drop6 = nn.Dropout2d()
+        # # fc6
+        # self.fc6 = nn.Conv2d(512, 4096, 7)
+        # self.relu6 = nn.ReLU(inplace=True)
+        # self.drop6 = nn.Dropout2d()
+        #
+        # # fc7
+        # self.fc7 = nn.Conv2d(4096, 4096, 1)
+        # self.relu7 = nn.ReLU(inplace=True)
+        # self.drop7 = nn.Dropout2d()
 
-        # fc7
-        self.fc7 = nn.Conv2d(4096, 4096, 1)
-        self.relu7 = nn.ReLU(inplace=True)
-        self.drop7 = nn.Dropout2d()
+        layer4 = nn.Sequential(nn.Conv2d(32, 32, 3, padding=1), nn.BatchNorm2d(32), nn.ReLU(inplace=True))
 
-        layer4 = nn.Sequential(nn.Conv2d(32, 32, 3, padding=1), nn.BatchNorm2d(32), nn.ReLU())
+        layer3 = nn.Sequential(nn.Conv2d(128, 32, 1), nn.BatchNorm2d(32), nn.ReLU(inplace=True),
+                               nn.Conv2d(32, 32, 3, padding=1), nn.BatchNorm2d(32), nn.ReLU(inplace=True))
 
-        layer3 = nn.Sequential(nn.Conv2d(128, 32, 1), nn.BatchNorm2d(32), nn.ReLU(),
-                               nn.Conv2d(32, 32, 3, padding=1), nn.BatchNorm2d(32), nn.ReLU())
+        layer2 = nn.Sequential(nn.Conv2d(256, 64, 1), nn.BatchNorm2d(64), nn.ReLU(inplace=True),
+                               nn.Conv2d(64, 64, 3, padding=1), nn.BatchNorm2d(64), nn.ReLU(inplace=True))
 
-        layer2 = nn.Sequential(nn.Conv2d(256, 64, 1), nn.BatchNorm2d(64), nn.ReLU(),
-                               nn.Conv2d(64, 64, 3, padding=1), nn.BatchNorm2d(64), nn.ReLU())
-
-        layer1 = nn.Sequential(nn.Conv2d(512, 128, 1), nn.BatchNorm2d(128), nn.ReLU(),
-                               nn.Conv2d(128, 128, 3, padding=1), nn.BatchNorm2d(128), nn.ReLU())
+        layer1 = nn.Sequential(nn.Conv2d(512, 128, 1), nn.BatchNorm2d(128), nn.ReLU(inplace=True),
+                               nn.Conv2d(128, 128, 3, padding=1), nn.BatchNorm2d(128), nn.ReLU(inplace=True))
 
         self.feature_convs = nn.ModuleList([layer1, layer2, layer3, layer4])
 
         self.inside_score_net=nn.Sequential(nn.Conv2d(32, 1, 1),nn.Sigmoid())
         self.side_v_geo = nn.Sequential(nn.Conv2d(32, 4, 1, padding=1),nn.Sigmoid())
         self.side_v_angle = nn.Sequential(nn.Conv2d(32, 1, 1, padding=1),nn.Sigmoid())
+
+
+        self._init_weights()
+
+        vgg16=vgg.VGG16(pretrained=True)
+
+        self.copy_params_from_vgg16(vgg16)
+
 
     def _init_weights(self):
         for m in self.modules():
@@ -116,16 +124,13 @@ class East(nn.Module):
 
         for l1, l2 in zip(vgg16.features, features):
             if isinstance(l1, nn.Conv2d) and isinstance(l2, nn.Conv2d):
+                print(l1,l2)
                 assert l1.weight.size() == l2.weight.size()
-                assert l1.bias.size() == l2.weight.size()
+                assert l1.bias.size() == l2.bias.size()
                 l2.weight.data = l1.weight.data
                 l2.bias.data = l1.bias.data
 
-        for i, name in zip([0, 3], ['fc6', 'fc7']):
-            l1 = vgg16.classifier[i]
-            l2 = getattr(self, name)
-            l2.weight.data = l1.weight.data.view(l2.weight.size())
-            l2.bias.data = l1.bias.data.view(l2.bias.size())
+
 
     def forward(self, x):
         h = x
@@ -195,3 +200,4 @@ class East(nn.Module):
 if __name__=="__main__":
     east=East()
     print(east)
+    #print(east.vgg16)
