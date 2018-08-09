@@ -1,4 +1,6 @@
 import warnings
+
+
 class DefaultConfig(object):
     train_task_id = "2T736"
 
@@ -6,17 +8,15 @@ class DefaultConfig(object):
     epoch_num = 24
     lr = 1e-3
     decay = 5e-4
-    use_gpu=True
-    batch_size=128
-    num_workers=8
-    optmizer='RMSprop' # RMSprop,Adam # SGD, SGD
-    betas=(0.5,0.999)
-    epsilon=1e-4
-    shrink_side_ratio=0.6
-    shrink_ratio=0.2
-    model='EAST'
-
-
+    use_gpu = True
+    batch_size = 128
+    num_workers = 8
+    optmizer = 'RMSprop'  # RMSprop,Adam # SGD, SGD
+    betas = (0.5, 0.999)
+    epsilon = 1e-4
+    shrink_side_ratio = 0.6
+    shrink_ratio = 0.2
+    model = 'EAST'
 
     patience = 2
     load_weights = False
@@ -25,16 +25,15 @@ class DefaultConfig(object):
     lambda_side_vertex_coord_loss = 1.0
 
     train_data_root = "/data/train/"
-    val_data_root="/data/val/"
-    test_data_root="/data/test/"
-    log_path="./checkpoints"
-    load_model_path="checkpoints/model.pth"
-    save_path="./model"
-    debug_file="/tmp/debug"
-    result_file='result.csv'
+    val_data_root = "/data/val/"
+    test_data_root = "/data/test/"
+    log_path = "./checkpoints"
+    load_model_path = "checkpoints/model.pth"
+    save_path = "./model"
+    debug_file = "/tmp/debug"
+    result_file = 'result.csv'
 
     gpu_list = "0,1,2,3,4,5,6,7"
-
 
     total_img = 10000
     validation_split_ratio = 0.1
@@ -58,26 +57,24 @@ class DefaultConfig(object):
     validation_steps = total_img * validation_split_ratio // batch_size
 
 
-
-
-def parse(self,kwargs):
+def parse(self, kwargs):
     '''
         update the config params
     :param self: 
     :param kwargs: 
     :return: 
     '''
-    for k,v in kwargs.items():
-        if not hasattr(self,k):
-            warnings.warn("Warning:opt has not attribute ^s" %k)
+    for k, v in kwargs.items():
+        if not hasattr(self, k):
+            warnings.warn("Warning:opt has not attribute ^s" % k)
 
-        setattr(self,k,v)
+        setattr(self, k, v)
 
     print('use config:')
-    for k,v in self.__class__.__dict__.items():
+    for k, v in self.__class__.__dict__.items():
         if not k.startswith('__'):
-            print(k,getattr(self,k))
+            print(k, getattr(self, k))
 
 
-DefaultConfig.parse=parse
-opt=DefaultConfig()
+DefaultConfig.parse = parse
+opt = DefaultConfig()

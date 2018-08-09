@@ -1,37 +1,57 @@
-#coding=utf-8
+# coding=utf-8
 import os
 from loss import *
 from config import opt
 import models
 import torch
 import torch.optim as optim
-from data.dataset import ImageDataSet,collate_fn
+from data.dataset import ImageDataSet, collate_fn
 from torch.utils.data import DataLoader
 from torch import nn
 from torch.autograd import Variable
-#from utils.visualize import Visualizer
-#from tqdm import tqdm
+# from utils.visualize import Visualizer
+# from tqdm import tqdm
 from torch.optim import lr_scheduler
 import data.dataset
 import torch.utils.data as data
-import time 
+import time
 import cv2
 
-gpus = list(range(len(opt.gpu_list.split(','))))
 
-def write_csv(results,file_name):
+# gpus = list(range(len(opt.gpu_list.split(','))))
+
+
+def help():
+    '''
+    打印帮助信息:python main.py help
+
+    '''
+    print('''
+    useage:python main.py <function> [--args=value]
+    <function>:=train | test | help
+    example:
+        python {0} train --env='env0701' --lr=0.01
+        python {0} test --dataset='pyath/to/dataset/root/'
+        python {0} help
+    available args:
+    '''.format(__file__))
+    from inspect import getsource
+
+    source = (getsource(opt.__class__))
+    print(source)
+
+
+def write_csv(results, file_name):
     '''write the result to file'''
     import csv
-    with open(file_name,'w') as f:
-        writer=csv.writer(f)
-        writer.writerow(['id','label'])
+    with open(file_name, 'w') as f:
+        writer = csv.writer(f)
+        writer.writerow(['id', 'label'])
         writer.writerow(results)
 
 
-
 def train(epochs, model, trainloader, crit, optimizer,
-         scheduler, save_step, weight_decay):
-    #add(xyf)
+          scheduler, save_step, weight_decay):
     for e in range(opt.epoch_num):
         print('*' * 10)
         print('Epoch {} / {}'.format(e + 1, epochs))
@@ -58,23 +78,24 @@ def train(epochs, model, trainloader, crit, optimizer,
         during = time.time() - start
         print("Loss : {:.6f}, Time:{:.2f} s ".format(loss / len(trainloader), during))
         print()
-        #writer.add_scalar('loss', loss / len(trainloader), e)
+        # writer.add_scalar('loss', loss / len(trainloader), e)
 
         if (e + 1) % save_step == 0:
             if not os.path.exists('./checkpoints'):
                 os.mkdir('./checkpoints')
             torch.save(model.state_dict(), './checkpoints/model_{}.pth'.format(e + 1))
 
+
 def main(**kwargs):
     opt.parse(kwargs)
 
-    #if not os.path.isdir(opt.log_path):
-        #os.mkdir(opt.log_path)
-    #if not os.path.isdir(opt.save_path):
-        #os.mkdir(opt.save_path)
+    # if not os.path.isdir(opt.log_path):
+    # os.mkdir(opt.log_path)
+    # if not os.path.isdir(opt.save_path):
+    # os.mkdir(opt.save_path)
 
     # step0:set log
-    #logger = Logger(opt.log_path)
+    # logger = Logger(opt.log_path)
 
     # step1:configure model
     model = getattr(models, opt.model)()
@@ -82,13 +103,14 @@ def main(**kwargs):
     if os.path.exists(opt.load_model_path):
         model.load(opt.load_model_path)
 
-    if opt.use_gpu: model.cuda()
+    if opt.use_gpu:
+        model = torch.nn.DataParallel(model).cuda()
 
     root_path = 'icdar2017/'
     train_img = root_path + 'images'
     train_txt = root_path + 'labels'
-    #print(train_img)
-    #print(train_txt)
+    # print(train_img)
+    # print(train_txt)
     trainset = ImageDataSet(train_img, train_txt)
     trainloader = DataLoader(
         trainset, batch_size=opt.batch_size, shuffle=True, collate_fn=collate_fn, num_workers=opt.num_workers)
@@ -96,7 +118,7 @@ def main(**kwargs):
     crit = LossFunc()
     weight_decay = 0
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
-    #weight_decay=1)
+    # weight_decay=1)
     scheduler = lr_scheduler.StepLR(optimizer, step_size=10000,
                                     gamma=0.94)
 
@@ -104,7 +126,8 @@ def main(**kwargs):
           crit=crit, optimizer=optimizer, scheduler=scheduler,
           save_step=100, weight_decay=weight_decay)
 
-    #write.close()
+    # write.close()
 
-if __name__=="__main__":
+
+if __name__ == "__main__":
     main()
